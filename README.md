@@ -1,148 +1,135 @@
-# Corporate Admin Panel
+# Corp Admin Panel
 
-Админ-панель корпоративного сервиса с гибкой настройкой прав доступа (RBAC) на Spring Boot.
-
-## Стек технологий
-
-- Java 21, Spring Boot 3.3.5
-- Spring Security 6 + JWT (JJWT 0.12.5)
-- Spring Data JPA + Hibernate 6
-- H2 Database (in-memory, для разработки)
-- SpringDoc OpenAPI (Swagger UI)
-- Lombok, Maven
+Админ-панель корпоративного сервиса на **Java 17 + Spring Boot 3** с гибкой настройкой прав доступа (RBAC):
+пользователи → роли → права (permissions). Права назначаются ролям, роли — пользователям, всё через REST API.
 
 ## Возможности
 
-- Аутентификация по JWT
-- RBAC: пользователи — роли — разрешения
-- Иерархия ролей (ADMIN — MANAGER — USER)
-- Метод-уровневая защита через @PreAuthorize
-- Аудит изменений прав (паттерн Observer)
-- Глобальная обработка ошибок
-- Swagger UI и H2-консоль
+- Управление пользователями: создание, просмотр, блокировка/разблокировка, удаление, назначение ролей
+- Управление ролями: создание, настройка набора прав, удаление (роль `ADMIN` защищена)
+- Проверка прав на уровне методов (`@PreAuthorize("hasAuthority('USER_WRITE')")`)
+- Политики паролей (длина, сложность), расширяемые без изменения кода
+- Журнал аудита всех административных действий
+- Веб-интерфейс без сборки (vanilla JS)
+- Единый формат ошибок (`ProblemDetail`, RFC 7807)
 
-## Архитектура
+## Стек
 
-Controller -> Service -> Repository -> Entity
-
-- Controller: REST-эндпоинты, валидация DTO
-- Service: бизнес-логика, @PreAuthorize
-- Repository: Spring Data JPA
-- Security: JWT-фильтр, UserDetailsService, JwtService
-- Event: Observer для аудита изменений прав
+Java 17, Spring Boot 3.3 (Web, Security, Data JPA, Validation), H2 (in-memory), JUnit 5, Maven.
 
 ## Быстрый старт
 
-Требования:
+```bash
+git clone https://github.com/<ExtazLe>/corp-admin-panel.git
+cd corp-admin-panel
+mvn spring-boot:run
+```
 
-- JDK 21 (Eclipse Temurin или Amazon Corretto)
-- Maven (или используй wrapper mvnw)
+Приложение стартует на `http://localhost:8080`. При первом запуске создаётся администратор:
 
-Запуск:
+| Логин | Пароль по умолчанию |
+|-------|---------------------|
+| `admin` | `Admin#12345` (переопределяется переменной окружения `ADMIN_PASSWORD`) |
 
-    git clone https://github.com/ExtazLe/corporate-admin-panel.git
-    cd corporate-admin-panel
-    ./mvnw spring-boot:run
+> ⚠️ Смените пароль и подключите production-БД (PostgreSQL) перед боевым использованием.
 
-Для Windows PowerShell:
+Тесты: `mvn test`
 
-    .\mvnw.cmd spring-boot:run
+## Веб-интерфейс
 
-Приложение: http://localhost:8080
+После запуска откройте **http://localhost:8080** и войдите как `admin`.
 
-## Доступы по умолчанию
+- **Пользователи** — создание, назначение ролей, блокировка, удаление
+- **Роли и права** — создание ролей и настройка набора прав галочками
+- **Журнал аудита** — кто, что и когда изменил
 
-| Логин | Пароль   | Роль       |
-|-------|----------|------------|
-| admin | admin123 | ROLE_ADMIN |
+Разделы и кнопки показываются в зависимости от прав вошедшего пользователя (данные берутся из `GET /api/me`),
+а реальная проверка всё равно выполняется на сервере. Интерфейс — статика в `src/main/resources/static`
+(HTML + CSS + JS без сборки и зависимостей), поддерживает светлую и тёмную тему.
 
-В продакшене обязательно смени пароль и JWT-секрет.
+> Учётные данные хранятся в `sessionStorage` вкладки до выхода. Для production лучше перейти на JWT/сессии с HttpOnly-cookie.
 
-## Эндпоинты
+## Права доступа
 
-| Метод  | URL                          | Доступ        | Описание                 |
-|--------|------------------------------|---------------|--------------------------|
-| POST   | /api/auth/login              | публично      | Логин, возвращает JWT    |
-| POST   | /api/auth/register           | публично      | Регистрация              |
-| GET    | /api/users                   | USER_READ     | Список пользователей     |
-| GET    | /api/users/{id}              | USER_READ     | Пользователь по ID       |
-| PUT    | /api/users/{id}              | USER_WRITE    | Обновить пользователя    |
-| DELETE | /api/users/{id}              | USER_DELETE   | Удалить пользователя     |
-| PUT    | /api/users/{id}/roles        | ROLE_MANAGE   | Назначить роли           |
-| GET    | /api/roles                   | USER_READ     | Список ролей             |
-| POST   | /api/roles                   | ROLE_MANAGE   | Создать роль             |
-| PUT    | /api/roles/{id}/permissions  | ROLE_MANAGE   | Обновить права роли      |
-| DELETE | /api/roles/{id}              | ROLE_MANAGE   | Удалить роль             |
-| GET    | /api/admin/dashboard         | ADMIN_PANEL   | Приветствие админа       |
+| Permission | Что разрешает |
+|------------|---------------|
+| `USER_READ` | просмотр пользователей |
+| `USER_WRITE` | создание, смена ролей, блокировка |
+| `USER_DELETE` | удаление пользователей |
+| `ROLES_READ` | просмотр ролей и списка прав |
+| `ROLES_WRITE` | создание/изменение/удаление ролей |
+| `AUDIT_READ` | просмотр журнала аудита |
 
-## Swagger UI
+Стартовые роли: `ADMIN` (все права), `MANAGER` (чтение пользователей, ролей, аудита), `EMPLOYEE` (без прав).
 
-http://localhost:8080/swagger-ui/index.html
+## REST API
 
-Как пользоваться:
+Аутентификация — HTTP Basic.
 
-1. Вызвать POST /api/auth/login с admin/admin123
-2. Скопировать token из ответа
-3. Нажать Authorize справа сверху
-4. Вставить Bearer <token>
-5. Вызывать защищённые эндпоинты
+| Метод | URL | Право |
+|-------|-----|-------|
+| GET | `/api/users`, `/api/users/{id}` | `USER_READ` |
+| POST | `/api/users` | `USER_WRITE` |
+| PUT | `/api/users/{id}/roles` | `USER_WRITE` |
+| PATCH | `/api/users/{id}/enabled?value=true\|false` | `USER_WRITE` |
+| DELETE | `/api/users/{id}` | `USER_DELETE` |
+| GET | `/api/roles`, `/api/permissions` | `ROLES_READ` |
+| POST / PUT / DELETE | `/api/roles`, `/api/roles/{id}` | `ROLES_WRITE` |
+| GET | `/api/audit` | `AUDIT_READ` |
 
-## H2 Console
+Примеры:
 
-http://localhost:8080/h2-console
+```bash
+# создать роль
+curl -u admin:'Admin#12345' -X POST localhost:8080/api/roles \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"HR","permissions":["USER_READ","USER_WRITE"]}'
 
-| Поле      | Значение                 |
-|-----------|--------------------------|
-| JDBC URL  | jdbc:h2:mem:admin_panel  |
-| User Name | sa                       |
-| Password  | (пусто)                  |
+# создать пользователя с ролью
+curl -u admin:'Admin#12345' -X POST localhost:8080/api/users \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ivan","password":"Str0ng#Pass99","roleIds":[4]}'
 
-## Пример использования
+# журнал аудита
+curl -u admin:'Admin#12345' localhost:8080/api/audit
+```
 
-Логин:
+## Архитектура
 
-    curl -X POST http://localhost:8080/api/auth/login \
-      -H "Content-Type: application/json" \
-      -d '{"username":"admin","password":"admin123"}'
+```
+controller  →  service (интерфейсы + реализации)  →  repository  →  domain
+                   ↓            ↓             ↓
+               factory      policy        event (audit)
+security (UserDetailsService, SecurityConfig)
+```
 
-Ответ:
+## SOLID
 
-    {"token":"eyJhbGci...","username":"admin","roles":["ROLE_ADMIN"]}
+| Принцип | Где применён |
+|---------|--------------|
+| **S** — Single Responsibility | Контроллеры только маршрутизируют, сервисы — бизнес-логика, `UserFactory` — создание, `AuditEventListener` — аудит, `PasswordValidator` — проверка паролей |
+| **O** — Open/Closed | Новая политика пароля = новый `@Component implements PasswordPolicy`; `PasswordValidator` не меняется. Новый подписчик на `AuditEvent` — без правок сервисов |
+| **L** — Liskov Substitution | Любая реализация `UserService`/`RoleService`/`PasswordPolicy` взаимозаменяема |
+| **I** — Interface Segregation | Узкие интерфейсы: `UserService`, `RoleService`, `PasswordPolicy`, раздельные репозитории |
+| **D** — Dependency Inversion | Сервисы и контроллеры зависят от абстракций, зависимости внедряются через конструктор |
 
-Использование токена:
+## Паттерны проектирования
 
-    curl http://localhost:8080/api/admin/dashboard \
-      -H "Authorization: Bearer <TOKEN>"
+| Паттерн | Реализация |
+|---------|-----------|
+| **Strategy** | `PasswordPolicy` + `MinLengthPolicy`, `ComplexityPolicy` |
+| **Factory** | `UserFactory` — единая точка создания пользователей с хешированием пароля |
+| **Observer** | `AuditEvent` + `AuditEventListener` (Spring Events) |
+| **Facade** | `AuditPublisher` скрывает определение актора и публикацию события |
+| **Adapter** | `DbUserDetailsService` адаптирует доменного `User` к `UserDetails` |
+| **Repository** | Spring Data JPA репозитории |
+| **DTO** | Java records для запросов/ответов, сущности наружу не отдаются |
 
-Ответ:
+## Идеи для развития
 
-    {"message":"Добро пожаловать в админ-панель","status":"OK"}
-
-## Принципы и паттерны
-
-| Категория        | Что применено                                              |
-|------------------|------------------------------------------------------------|
-| SOLID            | SRP, OCP, LSP, ISP, DIP                                    |
-| Паттерны GoF     | Strategy, Observer, Builder, Facade, Singleton             |
-| Архитектурные    | Service Layer, DTO, Repository, Global Exception Handler   |
-
-## Структура проекта
-
-    src/main/java/com/company/corporate_admin_panel/
-      CorporateAdminPanelApplication.java
-      config/       SecurityConfig, OpenApiConfig, DataInitializer
-      controller/   REST-контроллеры
-      service/      Бизнес-логика
-      repository/   Spring Data JPA
-      entity/       User, Role, Permission
-      dto/          Request/Response объекты
-      security/     JWT, UserDetailsService, фильтр
-      event/        Observer для аудита
-      exception/    Глобальный обработчик ошибок
-
-## Тесты
-
-    ./mvnw test
+- JWT или сессии вместо HTTP Basic, PostgreSQL + Flyway
+- Пагинация и фильтры в списках, Swagger/OpenAPI
+- Docker и CI (GitHub Actions)
 
 ## Лицензия
 
